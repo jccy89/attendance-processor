@@ -47,7 +47,7 @@ if master_file and response_file:
             absentees_list = []
             present_count = 0
 
-            for row in range(2, ws.max_row): ### indexing row
+            for row in range(2, ws.max_row + 1): ### indexing row
                 sid_val = ws.cell(row=row, column=col_map["StudentNumber"]).value
                 name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
                 
