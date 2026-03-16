@@ -69,7 +69,9 @@ if master_file and response_file:
 
             # ... (Rest of the buffer and download code) ...
 
-            # Create Buffers
+            # ... (Inside the processing loop after the for-loop ends) ...
+
+            # 3. Create Buffers for Downloads
             master_buffer = BytesIO()
             wb.save(master_buffer)
             master_buffer.seek(0)
@@ -80,14 +82,23 @@ if master_file and response_file:
                 absentee_df.to_excel(writer, index=False, sheet_name='Absentees')
             absentee_buffer.seek(0)
 
+            # 4. Results UI
             st.balloons()
             st.success(f"Processing Complete! {present_count} Present, {len(absentees_list)} Absent.")
             
+            # --- NEW: DISPLAY ABSENTEE LIST ON UI ---
+            if not absentee_df.empty:
+                st.subheader("📋 Absentee List Summary")
+                st.dataframe(absentee_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("Perfect attendance! No absentees found.")
+            # ----------------------------------------
+
+            st.divider()
             timestamp = datetime.now().strftime("%Y-%m-%d")
             
             dl_col1, dl_col2 = st.columns(2)
             with dl_col1:
-                # Updated Button Label
                 st.download_button(
                     label="📥 Download Attendance status record",
                     data=master_buffer,
@@ -98,7 +109,7 @@ if master_file and response_file:
             
             with dl_col2:
                 st.download_button(
-                    label="⚠️ Download Absentee List",
+                    label="⚠️ Download Absentee List (Excel)",
                     data=absentee_buffer,
                     file_name=f"Absentees_Only_{timestamp}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -107,4 +118,3 @@ if master_file and response_file:
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
-        
