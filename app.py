@@ -47,8 +47,9 @@ if master_file and response_file:
             absentees_list = []
             present_count = 0
 
-            for row in range(2, ws.max_row + 1): ### indexing row
+            for row in range(2, ws.max_row + 1):
                 sid_val = ws.cell(row=row, column=col_map["StudentNumber"]).value
+                # Grabs student name if the column exists
                 name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
                 
                 if sid_val is None: continue
@@ -59,9 +60,9 @@ if master_file and response_file:
                     present_count += 1
                 else:
                     ws.cell(row=row, column=col_map["Status"]).value = "Absent"
-                    # ADDED: 'MasterRow': row
+                    # Refinement: Row 2 becomes Index 1, Row 3 becomes Index 2, etc.
                     absentees_list.append({
-                        "MasterRow": row, 
+                        "Index": row - 1, 
                         "StudentNumber": sid, 
                         "StudentName": name_val
                     })
