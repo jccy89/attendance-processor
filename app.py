@@ -13,7 +13,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     # 1. Custom Font Size for Header
-    st.markdown("### <h1 style='font-size: 24px;'>1. Upload Master Sheet</h1>", unsafe_allow_index=True)
+    st.markdown("### <h1 style='font-size: 24px;'>1. Upload Master Sheet</h1>", unsafe_allow_html=True)
     master_file = st.file_uploader("Select the master Excel file", type=['xlsx'], label_visibility="collapsed")
     
     if master_file:
@@ -23,7 +23,7 @@ with col1:
 
 with col2:
     # 2. Custom Font Size for Header
-    st.markdown("### <h1 style='font-size: 24px;'>2. Upload Student Responses</h1>", unsafe_allow_index=True)
+    st.markdown("### <h1 style='font-size: 24px;'>2. Upload Student Responses</h1>", unsafe_allow_html=True)
     response_file = st.file_uploader("Select the student responses file", type=['xlsx'], label_visibility="collapsed")
     
     if response_file:
