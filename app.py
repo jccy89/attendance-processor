@@ -42,12 +42,13 @@ if master_file and response_file:
             ws = wb.active
             col_map = {cell.value: cell.column for cell in ws[1] if cell.value is not None}
             
+            # ... (Inside the processing loop) ...
+            
             absentees_list = []
             present_count = 0
 
             for row in range(2, ws.max_row + 1):
                 sid_val = ws.cell(row=row, column=col_map["StudentNumber"]).value
-                # Grabs name if exists, otherwise uses ID
                 name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
                 
                 if sid_val is None: continue
@@ -58,7 +59,14 @@ if master_file and response_file:
                     present_count += 1
                 else:
                     ws.cell(row=row, column=col_map["Status"]).value = "Absent"
-                    absentees_list.append({"StudentNumber": sid, "StudentName": name_val})
+                    # ADDED: 'MasterRow': row
+                    absentees_list.append({
+                        "MasterRow": row, 
+                        "StudentNumber": sid, 
+                        "StudentName": name_val
+                    })
+
+            # ... (Rest of the buffer and download code) ...
 
             # Create Buffers
             master_buffer = BytesIO()
