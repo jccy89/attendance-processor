@@ -12,7 +12,6 @@ st.title("📊 Weekly Attendance Processor")
 col1, col2 = st.columns(2)
 
 with col1:
-    # 1. Custom Font Size for Header
     st.markdown("### <h1 style='font-size: 24px;'>1. Upload Master Sheet</h1>", unsafe_allow_html=True)
     master_file = st.file_uploader("Select the master Excel file", type=['xlsx'], label_visibility="collapsed")
     
@@ -22,7 +21,6 @@ with col1:
         st.dataframe(preview_master, use_container_width=True)
 
 with col2:
-    # 2. Custom Font Size for Header
     st.markdown("### <h1 style='font-size: 24px;'>2. Upload Student Responses</h1>", unsafe_allow_html=True)
     response_file = st.file_uploader("Select the student responses file", type=['xlsx'], label_visibility="collapsed")
     
@@ -36,20 +34,32 @@ if master_file and response_file:
     if st.button("🚀 Process Attendance", type="primary"):
         try:
             df_responses = pd.read_excel(response_file)
-            response_numbers = {str(x).replace('.0', '').strip() for x in df_responses["StudentNumber"] if str(x).replace('.0', '').strip().isdigit()}
+            
+            # --- MODIFICATION: EXTRACT ID FROM EMAIL ---
+            # We look for the 'Email' column. If the user named it 'Email Address', it checks for that too.
+            email_col = next((c for c in df_responses.columns if 'Email' in c), None)
+            
+            if email_col:
+                # Extract the part before the '@', clean whitespace/decimals
+                response_numbers = {
+                    str(email).split('@')[0].replace('.0', '').strip() 
+                    for email in df_responses[email_col] 
+                    if pd.notnull(email) and '@' in str(email)
+                }
+            else:
+                # Fallback to StudentNumber if Email column isn't found
+                response_numbers = {str(x).replace('.0', '').strip() for x in df_responses.get("StudentNumber", []) if pd.notnull(x)}
+            # --------------------------------------------
 
             wb = openpyxl.load_workbook(master_file)
             ws = wb.active
             col_map = {cell.value: cell.column for cell in ws[1] if cell.value is not None}
-            
-            # ... (Inside the processing loop) ...
             
             absentees_list = []
             present_count = 0
 
             for row in range(2, ws.max_row + 1):
                 sid_val = ws.cell(row=row, column=col_map["StudentNumber"]).value
-                # Grabs student name if the column exists
                 name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
                 
                 if sid_val is None: continue
@@ -60,18 +70,13 @@ if master_file and response_file:
                     present_count += 1
                 else:
                     ws.cell(row=row, column=col_map["Status"]).value = "Absent"
-                    # Refinement: Row 2 becomes Index 1, Row 3 becomes Index 2, etc.
                     absentees_list.append({
                         "Index": row - 1, 
                         "StudentNumber": sid, 
                         "StudentName": name_val
                     })
 
-            # ... (Rest of the buffer and download code) ...
-
-            # ... (Inside the processing loop after the for-loop ends) ...
-
-            # 3. Create Buffers for Downloads
+            # Create Buffers
             master_buffer = BytesIO()
             wb.save(master_buffer)
             master_buffer.seek(0)
@@ -82,17 +87,15 @@ if master_file and response_file:
                 absentee_df.to_excel(writer, index=False, sheet_name='Absentees')
             absentee_buffer.seek(0)
 
-            # 4. Results UI
+            # Results UI
             st.balloons()
             st.success(f"Processing Complete! {present_count} Present, {len(absentees_list)} Absent.")
             
-            # --- NEW: DISPLAY ABSENTEE LIST ON UI ---
             if not absentee_df.empty:
                 st.subheader("📋 Absentee List Summary")
                 st.dataframe(absentee_df, use_container_width=True, hide_index=True)
             else:
                 st.info("Perfect attendance! No absentees found.")
-            # ----------------------------------------
 
             st.divider()
             timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -118,3 +121,4 @@ if master_file and response_file:
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
+
