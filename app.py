@@ -8,92 +8,125 @@ st.set_page_config(page_title="Attendance Processor", page_icon="📊", layout="
 
 st.title("📊 Weekly Attendance Processor")
 
+# Layout with two columns for uploads
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("### 1. Upload Master Sheet")
-    master_file = st.file_uploader("Select the original Master Excel", type=['xlsx'])
+    st.markdown("### <h1 style='font-size: 24px;'>1. Upload Master Sheet</h1>", unsafe_allow_html=True)
+    master_file = st.file_uploader("Select the master Excel file", type=['xlsx'], label_visibility="collapsed")
+    
+    if master_file:
+        st.subheader("Master Sheet Preview")
+        preview_master = pd.read_excel(master_file).head(5)
+        st.dataframe(preview_master, use_container_width=True)
 
 with col2:
-    st.markdown("### 2. Upload Student Responses")
-    response_file = st.file_uploader("Select the Form Responses", type=['xlsx'])
+    st.markdown("### <h1 style='font-size: 24px;'>2. Upload Student Responses</h1>", unsafe_allow_html=True)
+    response_file = st.file_uploader("Select the student responses file", type=['xlsx'], label_visibility="collapsed")
+    
+    if response_file:
+        st.subheader("Responses Preview")
+        preview_resp = pd.read_excel(response_file).head(5)
+        st.dataframe(preview_resp, use_container_width=True)
 
 if master_file and response_file:
     st.divider()
-    if st.button("🚀 Process & Match by Email", type="primary"):
+    if st.button("🚀 Process Attendance", type="primary"):
         try:
-            # 1. Read Responses to get Emails
+            # 1. Load responses and extract ID from Email
             df_responses = pd.read_excel(response_file)
             
-            # Find the Email column in the responses
-            resp_email_col = next((c for c in df_responses.columns if 'Email' in c), None)
+            email_col = next((c for c in df_responses.columns if 'Email' in c), None)
             
-            if not resp_email_col:
-                st.error("Could not find an 'Email' column in the Response file.")
+            if email_col:
+                # Extract part before '@', clean whitespace and ensure lowercase
+                response_ids = {
+                    str(email).split('@')[0].replace('.0', '').strip().lower() 
+                    for email in df_responses[email_col] 
+                    if pd.notnull(email) and '@' in str(email)
+                }
+            else:
+                st.error("Could not find an 'Email' column in the Responses file.")
                 st.stop()
 
-            # Create a set of clean, lowercase emails for fast matching
-            # We extract the ID part (before @) AND the full email to be safe
-            present_emails = {
-                str(email).strip().lower() 
-                for email in df_responses[resp_email_col] 
-                if pd.notnull(email)
-            }
-
-            # 2. Load Master Workbook (KEEPING ORIGINAL FORMAT)
-            # We seek(0) to ensure we read from the start of the uploaded file
+            # 2. Process Master File using openpyxl (Preserves original format/XML structure)
             master_file.seek(0)
             wb = openpyxl.load_workbook(master_file)
             ws = wb.active
-
-            # 3. Map Columns in Master Sheet
-            # We need 'Email' (to match) and 'Status' (to update)
-            master_cols = {str(cell.value).strip(): cell.column for cell in ws[1] if cell.value is not None}
             
-            # Identify the Email column in Master (might be 'Email', 'StudentEmail', etc.)
-            m_email_key = next((k for k in master_cols.keys() if 'Email' in k), None)
+            # Map columns (using strip and lower for robustness)
+            col_map = {str(cell.value).strip(): cell.column for cell in ws[1] if cell.value is not None}
             
-            if not m_email_key or "Status" not in master_cols:
-                st.error(f"Master Sheet must have an Email column and a 'Status' column. Found: {list(master_cols.keys())}")
+            if "StudentNumber" not in col_map or "Status" not in col_map:
+                st.error("Error: Master Sheet must have 'StudentNumber' and 'Status' columns.")
                 st.stop()
 
+            absentees_list = []
             present_count = 0
-            total_students = 0
 
-            # 4. Update the cells DIRECTLY without touching other formatting
+            # 3. Iterate through Master Sheet rows
             for row in range(2, ws.max_row + 1):
-                email_cell = ws.cell(row=row, column=master_cols[m_email_key])
-                if email_cell.value is None:
+                sid_cell = ws.cell(row=row, column=col_map["StudentNumber"])
+                sid_val = sid_cell.value
+                
+                if sid_val is None: 
                     continue
                 
-                total_students += 1
-                master_email = str(email_cell.value).strip().lower()
+                # Normalize Master ID for comparison
+                sid = str(sid_val).replace('.0', '').strip().lower()
+                name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
 
-                # Match logic
-                if master_email in present_emails:
-                    ws.cell(row=row, column=master_cols["Status"]).value = "Present"
+                if sid in response_ids:
+                    ws.cell(row=row, column=col_map["Status"]).value = "Present"
                     present_count += 1
                 else:
-                    ws.cell(row=row, column=master_cols["Status"]).value = "Absent"
+                    ws.cell(row=row, column=col_map["Status"]).value = "Absent"
+                    absentees_list.append({
+                        "StudentNumber": sid_val, 
+                        "StudentName": name_val
+                    })
 
-            # 5. Save the Workbook to a Buffer
-            # This method preserves all original styles, hidden columns, and formatting
-            output_buffer = BytesIO()
-            wb.save(output_buffer)
-            processed_data = output_buffer.getvalue()
+            # 4. Save modified workbook back to buffer
+            master_output_buffer = BytesIO()
+            wb.save(master_output_buffer)
+            master_output_data = master_output_buffer.getvalue()
+            
+            # Create separate Absentee List
+            absentee_df = pd.DataFrame(absentees_list)
+            absentee_buffer = BytesIO()
+            with pd.ExcelWriter(absentee_buffer, engine='openpyxl') as writer:
+                absentee_df.to_excel(writer, index=False, sheet_name='Absentees')
+            absentee_output_data = absentee_buffer.getvalue()
 
+            # Results UI
             st.balloons()
-            st.success(f"Matched {present_count} students out of {total_students} via Email.")
+            st.success(f"Processing Complete! {present_count} Present, {len(absentees_list)} Absent.")
+            
+            if not absentee_df.empty:
+                st.subheader("📋 Absentee List Summary")
+                st.dataframe(absentee_df, use_container_width=True)
 
-            # 6. Download
+            st.divider()
             timestamp = datetime.now().strftime("%Y-%m-%d")
-            st.download_button(
-                label="📥 Download Corrected Master Sheet",
-                data=processed_data,
-                file_name=f"Attendance_Status_{timestamp}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            
+            dl_col1, dl_col2 = st.columns(2)
+            with dl_col1:
+                st.download_button(
+                    label="📥 Download Updated Attendance (Matches Master Format)",
+                    data=master_output_data,
+                    file_name=f"Attendance_Status_{timestamp}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            
+            with dl_col2:
+                st.download_button(
+                    label="⚠️ Download Absentee List (Excel)",
+                    data=absentee_output_data,
+                    file_name=f"Absentees_Only_{timestamp}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"An error occurred: {e}")
