@@ -82,6 +82,7 @@ if master_file and response_file:
                 else:
                     ws.cell(row=row, column=col_map["Status"]).value = "Absent"
                     absentees_list.append({
+                        "Index": row - 1,
                         "StudentNumber": sid_val, 
                         "StudentName": name_val
                     })
