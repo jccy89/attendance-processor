@@ -41,7 +41,12 @@ if master_file and response_file:
             if email_col:
                 # We create a mapping of normalized ID to original data for later display
                 # Also clean the email column in the dataframe itself for easier filtering
-                df_responses['temp_id'] = df_responses[email_col].astype(str).str.split('@').str[0].str.replace('.0', '', regex=False).str.strip().lower()
+                df_responses['temp_id'] = (df_responses[email_col]
+                                           .astype(str)
+                                           .str.split('@').str[0] # Access the first part of the split
+                                           .str.replace('.0', '', regex=False)
+                                           .str.strip()
+                                           .str.lower())          # Use .str before .lower()
                 response_ids = set(df_responses['temp_id'].unique())
             else:
                 st.error("Could not find an 'Email' column in the Responses file.")
