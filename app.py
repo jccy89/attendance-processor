@@ -131,7 +131,7 @@ if master_file and response_file:
             dl_col1, dl_col2 = st.columns(2)
             with dl_col1:
                 st.download_button(
-                    label="📥 Download Updated Master",
+                    label="📥 Download Attendance",
                     data=master_output_data,
                     file_name=f"Attendance_Status_{timestamp}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
