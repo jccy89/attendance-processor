@@ -39,22 +39,19 @@ if master_file and response_file:
             email_col = next((c for c in df_responses.columns if 'Email' in c), None)
             
             if email_col:
-                # Extract part before '@', clean whitespace and ensure lowercase
-                response_ids = {
-                    str(email).split('@')[0].replace('.0', '').strip().lower() 
-                    for email in df_responses[email_col] 
-                    if pd.notnull(email) and '@' in str(email)
-                }
+                # We create a mapping of normalized ID to original data for later display
+                # Also clean the email column in the dataframe itself for easier filtering
+                df_responses['temp_id'] = df_responses[email_col].astype(str).str.split('@').str[0].str.replace('.0', '', regex=False).str.strip().lower()
+                response_ids = set(df_responses['temp_id'].unique())
             else:
                 st.error("Could not find an 'Email' column in the Responses file.")
                 st.stop()
 
-            # 2. Process Master File using openpyxl (Preserves original format/XML structure)
+            # 2. Process Master File using openpyxl
             master_file.seek(0)
             wb = openpyxl.load_workbook(master_file)
             ws = wb.active
             
-            # Map columns (using strip and lower for robustness)
             col_map = {str(cell.value).strip(): cell.column for cell in ws[1] if cell.value is not None}
             
             if "StudentNumber" not in col_map or "Status" not in col_map:
@@ -63,6 +60,7 @@ if master_file and response_file:
 
             absentees_list = []
             present_count = 0
+            master_ids_found = set() # Track which master IDs exist
 
             # 3. Iterate through Master Sheet rows
             for row in range(2, ws.max_row + 1):
@@ -72,8 +70,9 @@ if master_file and response_file:
                 if sid_val is None: 
                     continue
                 
-                # Normalize Master ID for comparison
                 sid = str(sid_val).replace('.0', '').strip().lower()
+                master_ids_found.add(sid) # Collect all valid IDs in master
+                
                 name_val = ws.cell(row=row, column=col_map.get("StudentName", col_map["StudentNumber"])).value
 
                 if sid in response_ids:
@@ -87,12 +86,17 @@ if master_file and response_file:
                         "StudentName": name_val
                     })
 
-            # 4. Save modified workbook back to buffer
+            # --- LOGIC FOR UNRECOGNIZED STUDENTS ---
+            # Find IDs that are in the Response file but NOT in the Master sheet
+            unrecognized_ids = response_ids - master_ids_found
+            df_unrecognized = df_responses[df_responses['temp_id'].isin(unrecognized_ids)].drop(columns=['temp_id'])
+
+            # 4. Save modified workbook
             master_output_buffer = BytesIO()
             wb.save(master_output_buffer)
             master_output_data = master_output_buffer.getvalue()
             
-            # Create separate Absentee List
+            # Create Absentee List Excel
             absentee_df = pd.DataFrame(absentees_list)
             absentee_buffer = BytesIO()
             with pd.ExcelWriter(absentee_buffer, engine='openpyxl') as writer:
@@ -103,9 +107,18 @@ if master_file and response_file:
             st.balloons()
             st.success(f"Processing Complete! {present_count} Present, {len(absentees_list)} Absent.")
             
+            # Display Absentees
             if not absentee_df.empty:
                 st.subheader("📋 Absentee List Summary")
                 st.dataframe(absentee_df, use_container_width=True)
+
+            # --- NEW DISPLAY SECTION ---
+            # Display Unrecognized Students
+            if not df_unrecognized.empty:
+                st.warning(f"⚠️ Found {len(df_unrecognized)} student(s) who submitted responses but are NOT in the Master Sheet.")
+                st.subheader("🔍 Unrecognized Students Details")
+                st.dataframe(df_unrecognized, use_container_width=True)
+            # ---------------------------
 
             st.divider()
             timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -113,7 +126,7 @@ if master_file and response_file:
             dl_col1, dl_col2 = st.columns(2)
             with dl_col1:
                 st.download_button(
-                    label="📥 Download Attendance",
+                    label="📥 Download Updated Master",
                     data=master_output_data,
                     file_name=f"Attendance_Status_{timestamp}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
