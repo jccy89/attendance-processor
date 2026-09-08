@@ -33,24 +33,44 @@ if master_file and response_file:
     st.divider()
     if st.button("🚀 Process Attendance", type="primary"):
         try:
-            # 1. Load responses and extract ID from Email
+            # 1. Load responses and extract ID from Email & 'Your Student ID' (if available)
             df_responses = pd.read_excel(response_file)
             
-            email_col = next((c for c in df_responses.columns if 'Email' in c), None)
+            email_col = next((c for c in df_responses.columns if 'Email' in str(c)), None)
+            id_col = next((c for c in df_responses.columns if 'Your Student ID' in str(c)), None)
             
-            if email_col:
-                # We create a mapping of normalized ID to original data for later display
-                # Also clean the email column in the dataframe itself for easier filtering
-                df_responses['temp_id'] = (df_responses[email_col]
-                                           .astype(str)
-                                           .str.split('@').str[0] # Access the first part of the split
-                                           .str.replace('.0', '', regex=False)
-                                           .str.strip()
-                                           .str.lower())          # Use .str before .lower()
-                response_ids = set(df_responses['temp_id'].unique())
-            else:
-                st.error("Could not find an 'Email' column in the Responses file.")
+            if not email_col and not id_col:
+                st.error("Could not find an 'Email' or 'Your Student ID' column in the Responses file.")
                 st.stop()
+
+            # Process Email IDs if column exists
+            email_ids = pd.Series(dtype=str)
+            if email_col:
+                email_ids = (df_responses[email_col]
+                             .astype(str)
+                             .str.split('@').str[0]
+                             .str.replace('.0', '', regex=False)
+                             .str.strip()
+                             .str.lower())
+
+            # Process 'Your Student ID' column if available
+            explicit_ids = pd.Series(dtype=str)
+            if id_col:
+                explicit_ids = (df_responses[id_col]
+                                .astype(str)
+                                .str.replace('.0', '', regex=False)
+                                .str.strip()
+                                .str.lower())
+
+            # Combine normalized IDs into a single temporary column and unique set
+            df_responses['temp_id'] = explicit_ids.combine_first(email_ids)
+            
+            # Create a set containing all IDs from both sources for complete lookup
+            response_ids = set(email_ids.dropna().unique()).union(set(explicit_ids.dropna().unique()))
+            
+            # Remove empty strings or 'nan' strings if any occurred during conversion
+            response_ids.discard('')
+            response_ids.discard('nan')
 
             # 2. Process Master File using openpyxl
             master_file.seek(0)
@@ -117,13 +137,11 @@ if master_file and response_file:
                 st.subheader("📋 Absentee List Summary")
                 st.dataframe(absentee_df, use_container_width=True)
 
-            # --- NEW DISPLAY SECTION ---
             # Display Unrecognized Students
             if not df_unrecognized.empty:
                 st.warning(f"⚠️ Found {len(df_unrecognized)} student(s) who submitted responses but are NOT in the Master Sheet.")
                 st.subheader("🔍 Unrecognized Students Details")
                 st.dataframe(df_unrecognized, use_container_width=True)
-            # ---------------------------
 
             st.divider()
             timestamp = datetime.now().strftime("%Y-%m-%d")
